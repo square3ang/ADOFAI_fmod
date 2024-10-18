@@ -64,8 +64,8 @@ public class Main
 
     public static ulong GetDspClock()
     {
-        ulong dspClock;
-        fmodsys.getMasterChannelGroup(out var master);
+        ulong dspClock; 
+        //fmodsys.getMasterChannelGroup(out var master);
         general.getDSPClock(out dspClock, out _);
         return dspClock;
     }
@@ -411,6 +411,32 @@ public class Main
         dum.StartCoroutine(Updater());
         dum.StartCoroutine(Collector());
 
+        var canvas = new GameObject();
+        Object.DontDestroyOnLoad(canvas);
+        var cv = canvas.AddComponent<Canvas>();
+        cv.sortingOrder = 32767;
+        cv.renderMode = RenderMode.ScreenSpaceOverlay;
+        var scaler = canvas.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
+
+        var logoObj2 = new GameObject();
+        logoObj2.transform.SetParent(canvas.transform);
+        logoObj2.transform.localScale = Vector2.one;
+        var rt = logoObj2.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0, 1);
+        rt.anchorMax = new Vector2(0, 1);
+        rt.sizeDelta = new Vector2(logo.width / (float)logo.height * 10, 10);
+
+        rt.anchoredPosition = new Vector2(rt.sizeDelta.x / 2f, -rt.sizeDelta.y / 2f);
+        var logoTex2 = logoObj2.AddComponent<RawImage>();
+        logoTex2.texture = logo;
+        logoTex2.color = new Color(1, 1, 1, 0.5f);
+        var logoOut = logoObj2.AddComponent<Shadow>();
+        logoOut.effectColor = Color.black;
+        logoOut.effectDistance = new Vector2(1, -1);
+        
 
         return true;
     }
@@ -978,6 +1004,11 @@ public class Main
     {
         public static bool Prefix(AudioConfiguration config, ref bool __result)
         {
+            if (config.dspBufferSize < 256)
+            {
+                config.dspBufferSize = 256;
+            }
+
             bufferSize = (uint)config.dspBufferSize;
 
             fmodsys.close();
@@ -1122,6 +1153,8 @@ public class Main
         splash.alphaWarning.DOColor(Color.clear, 0.5f);
         logoTex.DOColor(Color.clear, 0.5f);
         yield return new WaitForSeconds(0.5f);
+
+
         RealGoToMenu();
         Object.Destroy(logoHighRes);
     }
