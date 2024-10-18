@@ -16,6 +16,7 @@ using UnityModManagerNet;
 using FMOD;
 using Fmod5Sharp;
 using Fmod5Sharp.FmodTypes;
+using Microsoft.Win32;
 using UnityEngine.Experimental.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -47,6 +48,7 @@ public class Main
     private static UnityModManager.ModEntry entry;
     private static Dictionary<int, Channel> channels = new();
     private static Dictionary<int, AudioSource> idToAudioSource = new();
+    private static Dictionary<int, Channel> playOneShotChannels = new();
 
     private static Dictionary<int, float> volCache = new();
 
@@ -64,7 +66,7 @@ public class Main
 
     public static ulong GetDspClock()
     {
-        ulong dspClock; 
+        ulong dspClock;
         //fmodsys.getMasterChannelGroup(out var master);
         general.getDSPClock(out dspClock, out _);
         return dspClock;
@@ -99,7 +101,9 @@ public class Main
         float[] samples = new float[audioclip.samples * audioclip.channels];
         audioclip.GetData(samples, 0);
 
-        uint lenbytes = (uint)(audioclip.samples * audioclip.channels * sizeof(float));
+        uint lenbytes = (uint)Buffer.ByteLength(samples);
+        entry.Logger.Log("Length: " + lenbytes);
+
 
         CREATESOUNDEXINFO soundinfo = new CREATESOUNDEXINFO();
         soundinfo.cbsize = Marshal.SizeOf(typeof(CREATESOUNDEXINFO));
@@ -150,6 +154,12 @@ public class Main
             {
                 channels[i.Key].stop();
                 channels.Remove(i.Key);
+            }
+
+            if (playOneShotChannels.ContainsKey(i.Key))
+            {
+                playOneShotChannels[i.Key].stop();
+                playOneShotChannels.Remove(i.Key);
             }
         }
 
@@ -381,13 +391,14 @@ public class Main
         {
             GUILayout.Label(logo);
             GUILayout.Label("Made using FMOD by Firelight Technologies Pty Ltd.");
-            fmodsys.getNumDrivers(out var numDrivers); // 설치된 드라이버 수를 얻음
 
             var values = new List<string>();
-            for (int i = 0; i < numDrivers; ++i)
+
+            fmodsys.getNumDrivers(out var num);
+            for (int i = 0; i < num; i++)
             {
-                fmodsys.getDriverInfo(i, out var drivername, 1000, out var _, out var _, out var _, out var _);
-                values.Add(drivername);
+                fmodsys.getDriverInfo(i, out var name, 1000, out var _, out var _, out var _, out var _);
+                values.Add(name);
             }
 
             if (UnityModManager.UI.PopupToggleGroup(ref selectedDriver, values.ToArray()))
@@ -444,21 +455,21 @@ public class Main
         var rt2 = bufsizeindicator.AddComponent<RectTransform>();
         rt2.anchorMin = new Vector2(0, 1);
         rt2.anchorMax = new Vector2(0, 1);
-        
+
         rt2.pivot = new Vector2(0, 1);
-        
-       
+
+
         var bufsizeindicatorText = bufsizeindicator.AddComponent<Text>();
         bufsizeindicatorText.text = bufferSize.ToString();
-        
-        
+
+
         bufsizeindicatorText.color = new Color(1, 1, 1, 0.5f);
         bufsizeindicatorText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
         bufsizeindicatorText.fontSize = 10;
         var io = bufsizeindicator.AddComponent<Outline>();
         io.effectColor = Color.black;
         io.effectDistance = new Vector2(1, -1);
-        
+
         rt2.anchoredPosition = new Vector2(0, -rt.sizeDelta.y);
 
         return true;
@@ -547,7 +558,7 @@ public class Main
                 Sound snd;
                 chnl.getCurrentSound(out snd);
                 uint length;
-                snd.getLength(out length, TIMEUNIT.MS);
+                snd.getLength(out length, TIMEUNIT.PCM);
 
                 channels[__instance.GetInstanceID()].getCurrentSound(out var sound);
                 sound.getDefaults(out var freq, out _);
@@ -555,7 +566,7 @@ public class Main
                     positionCache.ContainsKey(__instance.GetInstanceID())
                         ? (uint)(positionCache[__instance.GetInstanceID()] * freq)
                         : 0, TIMEUNIT.PCM);
-                chnl.setDelay(dspClock, dspClock + (uint)((length + 1) / 1000d * 48000d));
+                chnl.setDelay(dspClock, dspClock + (uint)(length * __instance.pitch / (double)freq * 48000));
                 chnl.setLoopCount(__instance.loop ? -1 : 0);
                 chnl.setPitch(__instance.pitch);
 
@@ -654,18 +665,19 @@ public class Main
             Sound sound = MakeSoundFromAudioClip(clip);
             Channel chnl;
             fmodsys.playSound(sound, __instance.ignoreListenerPause ? nonpause : general, true, out chnl);
+            playOneShotChannels.Add(__instance.GetInstanceID(), chnl);
             ulong dspClock;
             chnl.getDSPClock(out _, out dspClock);
             Sound snd;
             chnl.getCurrentSound(out snd);
             uint length;
-            snd.getLength(out length, TIMEUNIT.MS);
+            snd.getLength(out length, TIMEUNIT.PCM);
             sound.getDefaults(out var freq, out _);
             chnl.setPosition(
                 positionCache.ContainsKey(__instance.GetInstanceID())
                     ? (uint)(positionCache[__instance.GetInstanceID()] * freq)
                     : 0, TIMEUNIT.PCM);
-            chnl.setDelay(dspClock, dspClock + (uint)((length + 1) / 1000d * 48000d));
+            chnl.setDelay(dspClock, dspClock + (uint)(length * __instance.pitch / (double)freq * 48000));
             chnl.setLoopCount(0);
             chnl.setPitch(__instance.pitch);
             float vole = 1;
@@ -720,7 +732,7 @@ public class Main
                     Sound snd;
                     chnl.getCurrentSound(out snd);
                     uint length;
-                    snd.getLength(out length, TIMEUNIT.MS);
+                    snd.getLength(out length, TIMEUNIT.PCM);
                     channels[__instance.GetInstanceID()].getCurrentSound(out var sound);
                     sound.getDefaults(out var freq, out _);
                     chnl.setPosition(
@@ -732,7 +744,7 @@ public class Main
 
 
                     chnl.setDelay(t,
-                        t + (uint)((length + 1) / 1000d * 48000d));
+                        t + (uint)(length * __instance.pitch / (double)freq * 48000));
                     chnl.setLoopCount(__instance.loop ? -1 : 0);
                     chnl.setPitch(__instance.pitch);
                     float vole = 1;
