@@ -268,6 +268,8 @@ public class Main
         }
     }
 
+    public static GameObject bufsizeindicator;
+
     public static bool Init(UnityModManager.ModEntry modEntry)
     {
         modEntry.OnSaveGUI = _ =>
@@ -428,15 +430,36 @@ public class Main
         rt.anchorMin = new Vector2(0, 1);
         rt.anchorMax = new Vector2(0, 1);
         rt.sizeDelta = new Vector2(logo.width / (float)logo.height * 10, 10);
-
-        rt.anchoredPosition = new Vector2(rt.sizeDelta.x / 2f, -rt.sizeDelta.y / 2f);
+        rt.pivot = new Vector2(0, 1);
+        rt.anchoredPosition = new Vector2(0, 0);
         var logoTex2 = logoObj2.AddComponent<RawImage>();
         logoTex2.texture = logo;
         logoTex2.color = new Color(1, 1, 1, 0.5f);
         var logoOut = logoObj2.AddComponent<Shadow>();
         logoOut.effectColor = Color.black;
         logoOut.effectDistance = new Vector2(1, -1);
+        bufsizeindicator = new GameObject();
+        bufsizeindicator.transform.SetParent(canvas.transform);
+        bufsizeindicator.transform.localScale = Vector2.one;
+        var rt2 = bufsizeindicator.AddComponent<RectTransform>();
+        rt2.anchorMin = new Vector2(0, 1);
+        rt2.anchorMax = new Vector2(0, 1);
         
+        rt2.pivot = new Vector2(0, 1);
+        
+       
+        var bufsizeindicatorText = bufsizeindicator.AddComponent<Text>();
+        bufsizeindicatorText.text = bufferSize.ToString();
+        
+        
+        bufsizeindicatorText.color = new Color(1, 1, 1, 0.5f);
+        bufsizeindicatorText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        bufsizeindicatorText.fontSize = 10;
+        var io = bufsizeindicator.AddComponent<Outline>();
+        io.effectColor = Color.black;
+        io.effectDistance = new Vector2(1, -1);
+        
+        rt2.anchoredPosition = new Vector2(0, -rt.sizeDelta.y);
 
         return true;
     }
@@ -1004,12 +1027,13 @@ public class Main
     {
         public static bool Prefix(AudioConfiguration config, ref bool __result)
         {
-            if (config.dspBufferSize < 256)
+            if (config.dspBufferSize == 0)
             {
-                config.dspBufferSize = 256;
+                config.dspBufferSize = 64;
             }
 
             bufferSize = (uint)config.dspBufferSize;
+            bufsizeindicator.GetComponent<Text>().text = bufferSize.ToString();
 
             fmodsys.close();
 
