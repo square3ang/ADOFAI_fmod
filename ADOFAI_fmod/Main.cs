@@ -566,7 +566,7 @@ public class Main
                     positionCache.ContainsKey(__instance.GetInstanceID())
                         ? (uint)(positionCache[__instance.GetInstanceID()] * freq)
                         : 0, TIMEUNIT.PCM);
-                chnl.setDelay(dspClock, dspClock + (uint)(length * __instance.pitch / (double)freq * 48000));
+                chnl.setDelay(dspClock, dspClock + (uint)(length / __instance.pitch / (double)freq * 48000));
                 chnl.setLoopCount(__instance.loop ? -1 : 0);
                 chnl.setPitch(__instance.pitch);
 
@@ -677,7 +677,7 @@ public class Main
                 positionCache.ContainsKey(__instance.GetInstanceID())
                     ? (uint)(positionCache[__instance.GetInstanceID()] * freq)
                     : 0, TIMEUNIT.PCM);
-            chnl.setDelay(dspClock, dspClock + (uint)(length * __instance.pitch / (double)freq * 48000));
+            chnl.setDelay(dspClock, dspClock + (uint)(length / __instance.pitch / (double)freq * 48000));
             chnl.setLoopCount(0);
             chnl.setPitch(__instance.pitch);
             float vole = 1;
@@ -744,7 +744,7 @@ public class Main
 
 
                     chnl.setDelay(t,
-                        t + (uint)(length * __instance.pitch / (double)freq * 48000));
+                        t + (uint)(length / __instance.pitch / (double)freq * 48000));
                     chnl.setLoopCount(__instance.loop ? -1 : 0);
                     chnl.setPitch(__instance.pitch);
                     float vole = 1;
