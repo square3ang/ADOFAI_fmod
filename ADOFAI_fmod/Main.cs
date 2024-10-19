@@ -48,7 +48,7 @@ public class Main
     private static UnityModManager.ModEntry entry;
     private static Dictionary<int, Channel> channels = new();
     private static Dictionary<int, AudioSource> idToAudioSource = new();
-    private static Dictionary<int, Channel> playOneShotChannels = new();
+    private static Dictionary<int, List<Channel>> playOneShotChannels = new();
 
     private static Dictionary<int, float> volCache = new();
 
@@ -152,14 +152,22 @@ public class Main
             dq.Enqueue(i.Key);
             if (channels.ContainsKey(i.Key))
             {
+                channels[i.Key].getDSP(CHANNELCONTROL_DSP_INDEX.HEAD, out var dsp);
+                dsp.release();
                 channels[i.Key].stop();
                 channels.Remove(i.Key);
             }
 
             if (playOneShotChannels.ContainsKey(i.Key))
             {
-                playOneShotChannels[i.Key].stop();
-                playOneShotChannels.Remove(i.Key);
+                foreach (var chnl in playOneShotChannels[i.Key])
+                {
+                    chnl.stop();
+                }
+
+
+                playOneShotChannels.Remove(i.Key);                    
+
             }
         }
 
@@ -237,7 +245,7 @@ public class Main
                 entry.Logger.Error("Failed to load internal sound: " + i.Key);
             }
         }
-
+        
         return true;
     }
 
@@ -429,10 +437,6 @@ public class Main
         var cv = canvas.AddComponent<Canvas>();
         cv.sortingOrder = 32767;
         cv.renderMode = RenderMode.ScreenSpaceOverlay;
-        var scaler = canvas.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920, 1080);
-        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
 
         var logoObj2 = new GameObject();
         logoObj2.transform.SetParent(canvas.transform);
@@ -540,6 +544,8 @@ public class Main
         Channel channel;
 
         fmodsys.playSound(sound, __instance.ignoreListenerPause ? nonpause : general, true, out channel);
+        fmodsys.createDSPByType(DSP_TYPE.FFT, out var dsp);
+        channel.addDSP(CHANNELCONTROL_DSP_INDEX.HEAD, dsp);
         channels.Add(__instance.GetInstanceID(), channel);
     }
 
@@ -665,7 +671,11 @@ public class Main
             Sound sound = MakeSoundFromAudioClip(clip);
             Channel chnl;
             fmodsys.playSound(sound, __instance.ignoreListenerPause ? nonpause : general, true, out chnl);
-            playOneShotChannels.Add(__instance.GetInstanceID(), chnl);
+            if (!playOneShotChannels.ContainsKey(__instance.GetInstanceID()))
+            {
+                playOneShotChannels.Add(__instance.GetInstanceID(), new List<Channel>());
+            }
+            playOneShotChannels[__instance.GetInstanceID()].Add(chnl);
             ulong dspClock;
             chnl.getDSPClock(out _, out dspClock);
             Sound snd;
@@ -1052,6 +1062,7 @@ public class Main
             cache.Clear();
             staticCache.Clear();
             channels.Clear();
+            playOneShotChannels.Clear();
             idToAudioSource.Clear();
             volCache.Clear();
 
@@ -1204,4 +1215,37 @@ public class Main
             return false;
         }
     }
+    
+    public static void GetSpectrumData(DSP dsp, float[] samples, int channelIndex, FFTWindow window)
+    {
+        // DSP의 창 함수 설정
+        dsp.setParameterInt((int)FMOD.DSP_FFT.WINDOWTYPE, (int)window);
+
+        // FFT 데이터 가져오기
+        dsp.getParameterData((int)FMOD.DSP_FFT.SPECTRUMDATA, out var unmanagedData, out var length);
+        FMOD.DSP_PARAMETER_FFT fftData = (FMOD.DSP_PARAMETER_FFT)Marshal.PtrToStructure(unmanagedData, typeof(FMOD.DSP_PARAMETER_FFT));
+        
+        // 스펙트럼 데이터 추출
+        // channelIndex는 0부터 시작하는 인덱스입니다.
+        if (channelIndex < fftData.numchannels)
+        {
+            Array.Copy(fftData.spectrum[channelIndex], samples, samples.Length);
+        }
+    }
+
+    [HarmonyPatch(typeof(AudioSource), "GetSpectrumData", typeof(float[]), typeof(int), typeof(FFTWindow))]
+    public static class AudioSource_GetSpectrumData
+    {
+        public static bool Prefix(AudioSource __instance, float[] samples, int channel, FFTWindow window)
+        {
+            if (channels.ContainsKey(__instance.GetInstanceID()))
+            {
+                channels[__instance.GetInstanceID()].getDSP(CHANNELCONTROL_DSP_INDEX.HEAD, out var dsp);
+                GetSpectrumData(dsp, samples, channel, window);
+            }
+            return false;
+        }
+    }
+    
+    
 }
